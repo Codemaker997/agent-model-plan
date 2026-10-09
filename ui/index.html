@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配装</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="pj">
+
+  <header class="pj-head">
+    <div>
+      <h1 class="pj-title">配装</h1>
+      <p class="pj-sub" id="pj-sub">正在读取…</p>
+    </div>
+    <div class="pj-tabs" role="tablist">
+      <button type="button" role="tab" data-tab="models" aria-selected="true">模型配装</button>
+      <button type="button" role="tab" data-tab="keys" aria-selected="false">钥匙串</button>
+    </div>
+  </header>
+
+  <div class="pj-body">
+
+    <!-- ============ 模型配装 ============ -->
+    <section class="pj-view" id="pj-view-models">
+      <div class="pj-bar">
+        <label class="pj-field">配装
+          <select class="pj-sel" id="pj-preset"></select>
+        </label>
+        <input class="pj-inp" id="pj-name" spellcheck="false" placeholder="配装名">
+        <div class="pj-grow"></div>
+        <button type="button" class="pj-btn ghost" id="pj-new">新建</button>
+        <button type="button" class="pj-btn ghost" id="pj-dup">复制</button>
+        <button type="button" class="pj-btn ghost danger" id="pj-del">删除</button>
+        <button type="button" class="pj-btn" id="pj-import">从实况导入</button>
+        <button type="button" class="pj-btn" id="pj-reload">刷新</button>
+      </div>
+
+      <div class="pj-caption">
+        <span id="pj-count"></span>
+        <button type="button" class="pj-btn primary" id="pj-apply" disabled>应用配装</button>
+      </div>
+
+      <div class="pj-sheet">
+        <table class="pj-table">
+          <thead>
+            <tr>
+              <th style="width:26%">角色卡</th>
+              <th style="width:25%">实况模型</th>
+              <th style="width:31%">配装模型</th>
+              <th style="width:18%">状态</th>
+            </tr>
+          </thead>
+          <tbody id="pj-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 钥匙串 ============ -->
+    <section class="pj-view" id="pj-view-keys" hidden>
+      <div class="pj-caption">
+        <span id="pj-vault-hint">密钥用本机主密钥加密后存在应用私有目录</span>
+        <button type="button" class="pj-btn" id="pj-refresh-mount">刷新挂载状态</button>
+      </div>
+      <div class="pj-deck">
+        <nav class="pj-rail" id="pj-rail" aria-label="供应商"></nav>
+        <div class="pj-pane" id="pj-pane"></div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="pj-modal" id="pj-modal" hidden>
+    <div class="pj-modal-card" role="dialog" aria-modal="true">
+      <h2 id="pj-modal-title">确认</h2>
+      <p id="pj-modal-body"></p>
+      <div class="pj-modal-act">
+        <button type="button" class="pj-btn" id="pj-modal-cancel">取消</button>
+        <button type="button" class="pj-btn primary" id="pj-modal-ok">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pj-toast" id="pj-toast" hidden></div>
+</div>
+
+<script type="module">
+  import { boot } from "./app.mjs";
+  boot().catch((err) => {
+    const sub = document.getElementById("pj-sub");
+    if (sub) sub.textContent = "启动失败：" + String(err && err.message || err);
+  });
+</script>
+</body>
+</html>

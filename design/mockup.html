@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配装 · 界面设计稿</title>
+<style>
+  /* ---------------------------------------------------------------
+     配色取自 Hana 两套主题的真实变量：
+     浅色 warm-paper  /  深色 midnight-contrast
+     落进 Hana 后这些变量由宿主注入，这里先手写一遍用于预览。
+  ---------------------------------------------------------------- */
+  :root {
+    --bg:           #F8F4ED;
+    --bg-card:      #FCFAF5;
+    --accent:       #537D96;
+    --accent-hover: #456A80;
+    --accent-light: rgba(83, 125, 150, 0.08);
+    --text:         #3B3D3F;
+    --text-light:   #6B6F73;
+    --text-muted:   #8E9196;
+    --border:       rgba(122, 96, 88, 0.18);
+    --shadow:       rgba(59, 61, 63, 0.09);
+    --green:        #7BAE7F;
+    --coral:        #EC8F8D;
+    --danger:       #8B3A3A;
+    --overlay-light:  rgba(0, 0, 0, 0.05);
+    --overlay-medium: rgba(0, 0, 0, 0.08);
+
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --control-h: 32px;
+
+    --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --fs-body: 0.9rem;
+    --fs-ui: 0.82rem;
+    --fs-caption: 0.78rem;
+    --fs-hint: 0.7rem;
+
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:           #26343D;
+      --bg-card:      #30414B;
+      --accent:       #E6B1C4;
+      --accent-hover: #F0C4D3;
+      --accent-light: rgba(230, 177, 196, 0.14);
+      --text:         #F0F6FA;
+      --text-light:   #D3E0E8;
+      --text-muted:   #B7C8D3;
+      --border:       rgba(230, 177, 196, 0.22);
+      --shadow:       rgba(0, 0, 0, 0.44);
+      --green:        #A8DDAA;
+      --coral:        #F1BEAD;
+      --danger:       #E28B8B;
+      --overlay-light:  rgba(255, 255, 255, 0.07);
+      --overlay-medium: rgba(255, 255, 255, 0.11);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; padding: 0 0 32px;
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-ui); font-size: var(--fs-body); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 44px 22px 0; }
+
+  /* ---------------- 供应商标识（暂时用色块 + 首字，等换成真 logo） ---------------- */
+
+  .pico {
+    flex: none; display: grid; place-items: center;
+    width: 16px; height: 16px; border-radius: 5px;
+    font-size: .58rem; font-weight: 700; color: #fff;
+    letter-spacing: -0.02em; line-height: 1;
+  }
+  .pico.lg { width: 22px; height: 22px; border-radius: 7px; font-size: .68rem; }
+
+  .pico[data-p="deepseek"]      { background: #4D6BFE; }
+  .pico[data-p="zhipu"]         { background: #2A63E8; }
+  .pico[data-p="moonshot"]      { background: #0F9E7E; }
+  .pico[data-p="minimax"]       { background: #E4573D; }
+  .pico[data-p="volcengine"]    { background: #1664FF; }
+  .pico[data-p="sensenova"]     { background: #6B4FD8; }
+  .pico[data-p="opencode-go"]   { background: #5C6B7A; }
+  .pico[data-p="tencent"]       { background: #2E7BF6; }
+  .pico[data-p="qwen"]          { background: #615CED; }
+  .pico[data-p="openai"]        { background: #10A37F; }
+  .pico[data-p="gemini"]        { background: #4285F4; }
+
+  /* ---------------- 头部 ---------------- */
+
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .head h1 { margin: 0; font-size: 1.32rem; font-weight: 600; letter-spacing: .2px; }
+  .head .sub { margin: 3px 0 0; font-size: var(--fs-caption); color: var(--text-muted); }
+
+  .tabs { display: inline-flex; gap: 2px; padding: 3px; background: var(--overlay-light); border-radius: var(--radius-md); }
+  .tabs button {
+    appearance: none; border: 0; background: transparent; color: var(--text-muted);
+    font: inherit; font-size: var(--fs-ui); padding: 5px 14px; border-radius: 6px; cursor: pointer;
+    transition: background .14s var(--ease), color .14s var(--ease);
+  }
+  .tabs button[aria-selected="true"] { background: var(--bg-card); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px var(--shadow); }
+
+  /* ---------------- 控件 ---------------- */
+
+  .bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 18px 0 0; padding: 10px 12px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  }
+  .field { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-caption); color: var(--text-muted); }
+
+  .btn {
+    appearance: none; font: inherit; font-size: var(--fs-ui); height: var(--control-h); padding: 0 12px;
+    border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text);
+    cursor: pointer; transition: background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);
+  }
+  .btn:hover { background: var(--overlay-light); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg-card); font-weight: 600; }
+  .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn.ghost { border-color: transparent; color: var(--text-muted); }
+  .btn.ghost:hover { color: var(--text); background: var(--overlay-light); }
+  .btn.danger { color: var(--danger); }
+  .grow { flex: 1 1 auto; }
+
+  .sel, .inp {
+    font: inherit; font-size: var(--fs-ui); height: var(--control-h); padding: 0 9px;
+    color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; outline: none;
+  }
+  .sel { min-width: 128px; }
+  .inp { flex: 1 1 150px; min-width: 0; }
+  .sel:focus, .inp:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+
+  .view { margin-top: 16px; }
+  .view[hidden] { display: none; }
+
+  .caption {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 0 4px 10px; font-size: var(--fs-caption); color: var(--text-muted);
+  }
+  .caption .dirty { color: var(--coral); font-weight: 600; }
+
+  /* ---------------- 表格 ---------------- */
+
+  .sheet { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: var(--fs-hint); font-weight: 600; letter-spacing: .5px;
+    color: var(--text-muted); padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody td { padding: 11px 14px; border-bottom: 1px solid var(--overlay-light); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--accent-light); }
+
+  .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .avatar {
+    width: 28px; height: 28px; flex: none; border-radius: 8px; display: grid; place-items: center;
+    font-size: .72rem; font-weight: 700; color: var(--bg-card); background: var(--accent);
+  }
+  .avatar.g2 { background: var(--green); }
+  .avatar.g3 { background: #C4A87D; }
+  .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .marks { display: flex; gap: 5px; margin-top: 1px; }
+  .mark { font-size: var(--fs-hint); padding: 0 6px; line-height: 1.5; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); }
+  .mark.on { color: var(--accent); border-color: var(--accent); }
+
+  /* 模型 + 供应商图标 */
+  .mid { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .mid .id { font-family: var(--font-mono); font-size: var(--fs-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid .pv { display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: var(--fs-hint); color: var(--text-muted); }
+  .none { color: var(--text-muted); font-size: var(--fs-caption); }
+
+  .state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-caption); color: var(--text-muted); }
+  .state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .state.same { color: var(--green); }
+  .state.dirty { color: var(--coral); font-weight: 600; }
+
+  /* ---------------- 钥匙串：左右视图 ---------------- */
+
+  .deck {
+    display: grid; grid-template-columns: 214px minmax(0, 1fr);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    overflow: hidden; min-height: 348px;
+  }
+
+  /* 左：供应商列表 */
+  .rail { border-right: 1px solid var(--border); padding: 8px; overflow-y: auto; max-height: 460px; }
+  .rail .rt { font-size: var(--fs-hint); color: var(--text-muted); padding: 4px 8px 8px; letter-spacing: .4px; }
+
+  .ritem {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 7px 9px; border: 0; border-radius: var(--radius-md); background: transparent;
+    color: var(--text); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer;
+    transition: background .14s var(--ease);
+  }
+  .ritem:hover { background: var(--overlay-light); }
+  .ritem[aria-current="true"] { background: var(--accent-light); font-weight: 600; }
+  .ritem[aria-current="true"] .rname { color: var(--accent); }
+  .rname { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rcount { flex: none; font-size: var(--fs-hint); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .rdot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+  .rdot.off { background: transparent; }
+
+  /* 右：详情 */
+  .pane { display: flex; flex-direction: column; min-width: 0; }
+  .phead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--border);
+  }
+  .phead h2 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+  .phead .mount {
+    margin-left: auto; font-size: var(--fs-hint); color: var(--text-muted);
+    font-family: var(--font-mono); white-space: nowrap;
+  }
+  .phead .mount b { color: var(--text-light); font-weight: 600; }
+
+  .plist { flex: 1 1 auto; overflow-y: auto; max-height: 348px; padding: 6px 10px 10px; }
+  .plist::-webkit-scrollbar { width: 8px; }
+  .plist::-webkit-scrollbar-thumb { background: var(--overlay-medium); border-radius: 4px; }
+
+  .krow { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: var(--radius-md); }
+  .krow:hover { background: var(--overlay-light); }
+  .krow + .krow { border-top: 1px solid var(--overlay-light); }
+
+  .ktag { flex: none; font-size: var(--fs-hint); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-light); }
+  .ksecret { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ksecret i { font-style: normal; color: var(--text-muted); }
+  .kacts { flex: none; display: flex; gap: 2px; }
+  .kbtn { appearance: none; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-hint); padding: 3px 8px; border-radius: 5px; cursor: pointer; }
+  .kbtn:hover { background: var(--overlay-medium); color: var(--text); }
+  .kbtn.copy:hover { color: var(--accent); }
+
+  .pfoot { padding: 10px 16px 14px; }
+  .kadd {
+    appearance: none; border: 1px dashed var(--border); background: transparent; color: var(--text-muted);
+    font: inherit; font-size: var(--fs-caption); padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer;
+  }
+  .kadd:hover { color: var(--accent); border-color: var(--accent); }
+
+  .kempty { padding: 26px 12px; text-align: center; font-size: var(--fs-caption); color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <h1>配装</h1>
+      <p class="sub">13 张角色卡 · 40 个可用模型 · 2 套配装 · 5 组密钥</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="models">模型配装</button>
+      <button role="tab" aria-selected="false" data-tab="keys">钥匙串</button>
+    </div>
+  </div>
+
+  <!-- ============ 模型配装 ============ -->
+  <section class="view" data-view="models">
+    <div class="bar">
+      <label class="field">配装
+        <select class="sel"><option>默认配装</option><option>下班（个人）</option></select>
+      </label>
+      <input class="inp" value="默认配装" spellcheck="false">
+      <div class="grow"></div>
+      <button class="btn ghost">新建</button>
+      <button class="btn ghost">复制</button>
+      <button class="btn ghost danger">删除</button>
+      <button class="btn">从实况导入</button>
+      <button class="btn">刷新</button>
+    </div>
+
+    <div class="caption">
+      <span><span class="dirty">4 处待应用</span> / 共 13 张角色卡</span>
+      <button class="btn primary">应用配装</button>
+    </div>
+
+    <div class="sheet">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:27%">角色卡</th>
+            <th style="width:25%">实况模型</th>
+            <th style="width:30%">配装模型</th>
+            <th style="width:18%">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="who"><span class="avatar">H</span><div><div class="name">Hanako</div><div class="marks"><span class="mark on">主控</span><span class="mark">当前</span></div></div></div></td>
+            <td><div class="mid"><span class="pico" data-p="deepseek">D</span><span class="pv">DeepSeek</span><span class="id">deepseek-flash</span></div></td>
+            <td><div class="mid"><span class="pico" data-p="deepseek">D</span><span class="pv">DeepSeek</span><span class="id">deepseek-flash</span></div></td>
+            <td><span class="state same">一致</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="avatar g2">M</span><div><div class="name">Mapper</div></div></div></td>
+            <td><div class="mid"><span class="pico" data-p="opencode-go">O</span><span class="pv">opencode-go</span><span class="id">kimi-k2.7-code</span></div></td>
+            <td><div class="mid"><span class="pico" data-p="opencode-go">O</span><span class="pv">opencode-go</span><span class="id">deepseek-v4-flash</span></div></td>
+            <td><span class="state dirty">待应用</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="avatar g3">M</span><div><div class="name">mp-director</div></div></div></td>
+            <td><div class="mid"><span class="pico" data-p="minimax">M</span><span class="pv">MiniMax</span><span class="id">M3.1-Flash-Preview</span></div></td>
+            <td><div class="mid"><span class="pico" data-p="deepseek">D</span><span class="pv">DeepSeek</span><span class="id">deepseek-flash</span></div></td>
+            <td><span class="state dirty">待应用</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="avatar">S</span><div><div class="name">SP-code-reviewer</div></div></div></td>
+            <td><div class="mid"><span class="pico" data-p="zhipu">Z</span><span class="pv">智谱 GLM</span><span class="id">glm-5.3-flash</span></div></td>
+            <td><div class="mid"><span class="pico" data-p="zhipu">Z</span><span class="pv">智谱 GLM</span><span class="id">glm-5.3-flash</span></div></td>
+            <td><span class="state same">一致</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="avatar g2">Z</span><div><div class="name">zettaranc</div></div></div></td>
+            <td><span class="none">跟随默认</span></td>
+            <td><span class="none">未指定</span></td>
+            <td><span class="state same">沿用默认</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 钥匙串（左右视图） ============ -->
+  <section class="view" data-view="keys" hidden>
+    <div class="caption">
+      <span>密钥只存本机，用本机主密钥加密后落盘</span>
+      <button class="btn">刷新挂载状态</button>
+    </div>
+
+    <div class="deck">
+
+      <!-- 左：供应商 -->
+      <nav class="rail" aria-label="供应商">
+        <div class="rt">供应商 · 6</div>
+
+        <button class="ritem" aria-current="true">
+          <span class="pico lg" data-p="deepseek">D</span>
+          <span class="rname">DeepSeek</span>
+          <span class="rdot" title="已挂载"></span>
+          <span class="rcount">2</span>
+        </button>
+
+        <button class="ritem">
+          <span class="pico lg" data-p="zhipu">Z</span>
+          <span class="rname">智谱 GLM</span>
+          <span class="rdot" title="已挂载"></span>
+          <span class="rcount">1</span>
+        </button>
+
+        <button class="ritem">
+          <span class="pico lg" data-p="minimax">M</span>
+          <span class="rname">MiniMax</span>
+          <span class="rdot" title="已挂载"></span>
+          <span class="rcount">0</span>
+        </button>
+
+        <button class="ritem">
+          <span class="pico lg" data-p="opencode-go">O</span>
+          <span class="rname">opencode-go</span>
+          <span class="rdot" title="已挂载"></span>
+          <span class="rcount">1</span>
+        </button>
+
+        <button class="ritem">
+          <span class="pico lg" data-p="moonshot">K</span>
+          <span class="rname">Moonshot</span>
+          <span class="rdot off"></span>
+          <span class="rcount">1</span>
+        </button>
+
+        <button class="ritem">
+          <span class="pico lg" data-p="volcengine">V</span>
+          <span class="rname">火山方舟</span>
+          <span class="rdot off"></span>
+          <span class="rcount">0</span>
+        </button>
+      </nav>
+
+      <!-- 右：该供应商的密钥 -->
+      <div class="pane">
+        <div class="phead">
+          <span class="pico lg" data-p="deepseek">D</span>
+          <h2>DeepSeek</h2>
+          <span class="mount">当前挂载 ····<b>a3f9</b></span>
+        </div>
+
+        <div class="plist">
+          <div class="krow">
+            <span class="ktag">公司</span>
+            <span class="ksecret">sk-<i>····························</i>a3f9</span>
+            <span class="kacts"><button class="kbtn copy">复制</button><button class="kbtn">备注</button><button class="kbtn">删</button></span>
+          </div>
+          <div class="krow">
+            <span class="ktag">个人</span>
+            <span class="ksecret">sk-<i>····························</i>7c21</span>
+            <span class="kacts"><button class="kbtn copy">复制</button><button class="kbtn">备注</button><button class="kbtn">删</button></span>
+          </div>
+          <div class="krow">
+            <span class="ktag">备用</span>
+            <span class="ksecret">sk-<i>····························</i>5e07</span>
+            <span class="kacts"><button class="kbtn copy">复制</button><button class="kbtn">备注</button><button class="kbtn">删</button></span>
+          </div>
+          <div class="krow">
+            <span class="ktag">测试额度</span>
+            <span class="ksecret">sk-<i>····························</i>2210</span>
+            <span class="kacts"><button class="kbtn copy">复制</button><button class="kbtn">备注</button><button class="kbtn">删</button></span>
+          </div>
+          <div class="krow">
+            <span class="ktag">旧</span>
+            <span class="ksecret">sk-<i>····························</i>8b3c</span>
+            <span class="kacts"><button class="kbtn copy">复制</button><button class="kbtn">备注</button><button class="kbtn">删</button></span>
+          </div>
+        </div>
+
+        <div class="pfoot">
+          <button class="kadd">＋ 添加密钥</button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<script>
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== b.dataset.tab; });
+  }));
+  document.querySelectorAll('.ritem').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.ritem').forEach((x) => x.setAttribute('aria-current', String(x === b)));
+  }));
+</script>
+</body>
+</html>

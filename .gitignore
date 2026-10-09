@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+
+# 本机数据：钥匙串密文、主密钥、配装记录都在 App 数据目录，不进仓库
+*.key
+vault.json
+vault.key
+
+# 个人角色头像：只在本机安装副本里使用，不随公开源码分发。
+# 运行时优先向宿主 /api/agents/:id/avatar 直取，取不到再回落首字母。
+avatars/
+
+# 设计过程稿与本地备份
+design/alt-*.png
+*.tmp
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
