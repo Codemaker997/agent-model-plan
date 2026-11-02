@@ -79,12 +79,51 @@ export function apply(ctx) {
     "avatar.webp",
   ];
 
-  // App 自己的安装目录：头像是随包携带的，读这里不受 HANA_HOME 权限限制
+  // App 自己的安装目录：随包头像读这里不受 HANA_HOME 权限限制
   const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+  // 头像缓存：宿主目录 app 后端读不进来（allow-fs-read 只给 installDir/dataDir），
+  // 所以换一台机器后由用户就地导入一次，图片落在这里，之后每次都能读到。
+  const avatarCacheDir = dataDir ? path.join(dataDir, "avatars") : null;
+  const YUAN_AVATAR_DIR = path.join(APP_DIR, "avatars-yuan");
+  const YUAN_KEYS = new Set(["hanako", "butter", "ming", "kong"]);
+  const AVATAR_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  const AVATAR_MAX_BYTES = 512 * 1024;
+
+  function safeAvatarId(raw) {
+    const id = String(raw || "").trim();
+    return AVATAR_ID_RE.test(id) && !id.includes("..") ? id : null;
+  }
+
+  function readCachedAvatar(agentId) {
+    if (!avatarCacheDir) return null;
+    try {
+      const file = path.join(avatarCacheDir, `${agentId}.png`);
+      if (!fs.existsSync(file)) return null;
+      const buf = fs.readFileSync(file);
+      return buf.length ? dataUrlOf(buf, file) : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   function readBundledAvatar(agentId) {
     try {
       const file = path.join(APP_DIR, "avatars", `${agentId}.png`);
+      if (!fs.existsSync(file)) return null;
+      const buf = fs.readFileSync(file);
+      return buf.length ? dataUrlOf(buf, file) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 四神兽（yuan）的兜底头像：新角色没有自己的图时，按它的人格底座给一张
+  function readYuanAvatar(yuan) {
+    const key = String(yuan || "").trim().toLowerCase();
+    if (!YUAN_KEYS.has(key)) return null;
+    try {
+      const file = path.join(YUAN_AVATAR_DIR, `${key}.png`);
       if (!fs.existsSync(file)) return null;
       const buf = fs.readFileSync(file);
       return buf.length ? dataUrlOf(buf, file) : null;
@@ -119,9 +158,14 @@ export function apply(ctx) {
     { name: "name=显示名+agentId", make: (id, nm, rel) => ({ kind: "agent", name: nm, agentId: id, path: rel }) },
   ];
 
-  async function readAgentAvatar(agentId) {
+  async function readAgentAvatar(agentId, yuan) {
+    const cached = readCachedAvatar(agentId);
+    if (cached) return { data: cached, diag: "本机缓存" };
     const bundled = readBundledAvatar(agentId);
-    return { data: bundled, diag: "" };
+    if (bundled) return { data: bundled, diag: "随包" };
+    const fallback = readYuanAvatar(yuan);
+    if (fallback) return { data: fallback, diag: `yuan:${yuan}` };
+    return { data: null, diag: "缺图" };
   }
 
   // [保留备查] 旧探测逻辑：四条路全被权限模型拦死，详见 docs/avatar-access.md
@@ -331,7 +375,7 @@ export function apply(ctx) {
             } catch (err) {
               readError = describeError(err).message;
             }
-            const avatar = await readAgentAvatar(agent.id);
+            const avatar = await readAgentAvatar(agent.id, agent.yuan);
             return {
               id: agent.id,
               name: agent.name || agent.id,
@@ -350,6 +394,58 @@ export function apply(ctx) {
         const info = describeError(err);
         log("error", `GET /agents 失败：${info.message}`);
         return fail(c, info.code, info.message, info.code === "CAPABILITY_REQUIRED" ? 403 : 503);
+      }
+    });
+
+    /* ---- 头像缓存 ---- */
+
+    // 本机已经导入过哪几张头像
+    app.get("/avatars", (c) => {
+      if (!avatarCacheDir) return c.json({ ok: true, ids: [] });
+      try {
+        const ids = fs
+          .readdirSync(avatarCacheDir)
+          .filter((name) => name.endsWith(".png"))
+          .map((name) => name.slice(0, -4))
+          .filter((id) => AVATAR_ID_RE.test(id));
+        return c.json({ ok: true, ids });
+      } catch (err) {
+        return c.json({ ok: true, ids: [], reason: err?.message || String(err) });
+      }
+    });
+
+    // 收一张已裁好的 PNG（前端用 canvas 统一成 128×128），写进本机缓存
+    app.post("/avatars/:id", async (c) => {
+      const id = safeAvatarId(c.req.param("id"));
+      if (!id) return fail(c, "INVALID_AGENT_ID", "角色 id 不合法", 400);
+      if (!avatarCacheDir) return fail(c, "DATA_DIR_UNAVAILABLE", "数据目录不可用，无法保存头像", 500);
+      try {
+        const body = await c.req.json().catch(() => ({}));
+        const raw = typeof body?.dataUrl === "string" ? body.dataUrl : "";
+        const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(raw);
+        if (!match) return fail(c, "INVALID_PAYLOAD", "dataUrl 必须是 PNG 的 base64", 400);
+        const buf = Buffer.from(match[1], "base64");
+        if (!buf.length) return fail(c, "INVALID_PAYLOAD", "图片内容为空", 400);
+        if (buf.length > AVATAR_MAX_BYTES) {
+          return fail(c, "AVATAR_TOO_LARGE", `图片超过 ${Math.round(AVATAR_MAX_BYTES / 1024)} KB`, 413);
+        }
+        fs.mkdirSync(avatarCacheDir, { recursive: true });
+        fs.writeFileSync(path.join(avatarCacheDir, `${id}.png`), buf);
+        return c.json({ ok: true, id, bytes: buf.length, avatar: readCachedAvatar(id) });
+      } catch (err) {
+        return fail(c, "AVATAR_WRITE_FAILED", err?.message || String(err));
+      }
+    });
+
+    app.delete("/avatars/:id", (c) => {
+      const id = safeAvatarId(c.req.param("id"));
+      if (!id) return fail(c, "INVALID_AGENT_ID", "角色 id 不合法", 400);
+      try {
+        const file = avatarCacheDir ? path.join(avatarCacheDir, `${id}.png`) : null;
+        if (file && fs.existsSync(file)) fs.rmSync(file, { force: true });
+        return c.json({ ok: true });
+      } catch (err) {
+        return fail(c, "AVATAR_DELETE_FAILED", err?.message || String(err));
       }
     });
 

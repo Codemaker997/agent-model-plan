@@ -3,7 +3,7 @@
   "id": "agent-model-plan",
   "name": "配装",
   "description": "集中管理所有角色卡的默认聊天模型与各供应商密钥，整套存成配装，随时切换",
-  "version": "1.2.0",
+  "version": "1.2.3",
   "entry": "index.js",
   "minAppVersion": "0.1017.0",
   "icon": "assets/icon.svg",

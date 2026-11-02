@@ -16,6 +16,7 @@ const state = {
   vault: [],          // [{ id, displayName, mount, entries }]
   vaultSel: null,
   adding: false,
+  loadErrors: [],     // 启动时读取失败的项目，任一成功都能继续用
 };
 
 /* ---------------- 基础 ---------------- */
@@ -27,20 +28,53 @@ const el = (tag, cls, text) => {
   return node;
 };
 
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label}超时：${Math.round(ms / 1000)} 秒没有响应`)),
+      ms
+    );
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 async function getHana() {
   if (hana) return hana;
   const mod = await import("./sdk/ui.js");
-  hana = typeof mod.createHanaAppUiSdk === "function"
-    ? mod.createHanaAppUiSdk({ targetWindow: window })
-    : mod.hana;
-  if (hana && typeof hana.ready === "function") {
-    try { await hana.ready(); } catch (_) { /* 握手失败仍继续 */ }
+  let created = null;
+  if (typeof mod.createHanaAppUiSdk === "function") {
+    try {
+      created = mod.createHanaAppUiSdk({ targetWindow: window });
+    } catch (err) {
+      // 新版 SDK 会校验页面路由，校验不通过时回落到 SDK 自带的单例
+      console.warn("[配装] createHanaAppUiSdk 失败，回落默认实例：", err);
+      created = mod.hana || null;
+    }
+  } else {
+    created = mod.hana || null;
+  }
+  if (!created) throw new Error("App SDK 没有导出可用的 hana 实例");
+  hana = created;
+  if (typeof hana.ready === "function") {
+    // 握手只作为门面，等不到也必须继续，否则页面会永远停在加载文案上
+    try {
+      await withTimeout(hana.ready(), 3000, "与宿主握手");
+    } catch (err) {
+      console.warn("[配装] 握手未完成，继续请求：", err);
+    }
   }
   return hana;
 }
 
 async function api(path, init) {
-  const res = await hana.api.fetch(path, init);
+  const ui = await getHana();
+  if (!ui || !ui.api || typeof ui.api.fetch !== "function") {
+    throw new Error("App SDK 没有提供 api.fetch");
+  }
+  const res = await withTimeout(ui.api.fetch(path, init), 20000, `请求 ${path} `);
   const text = await res.text();
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
@@ -440,8 +474,9 @@ function renderModels() {
 
   const models = state.providers.reduce((n, p) => n + p.models.length, 0);
   const withAvatar = state.agents.filter((a) => a.avatar).length;
-  document.getElementById("pj-sub").textContent =
-    `${state.agents.length} 张角色卡 · ${models} 个可用模型 · ${state.presets.length} 套配装 · ${countKeys()} 组密钥 · 头像 ${withAvatar}/${state.agents.length}`;
+  document.getElementById("pj-sub").textContent = state.loadErrors && state.loadErrors.length
+    ? `读取失败：${state.loadErrors[0]}${state.loadErrors.length > 1 ? `（另有 ${state.loadErrors.length - 1} 项）` : ""}`
+    : `${state.agents.length} 张角色卡 · ${models} 个可用模型 · ${state.presets.length} 套配装 · ${countKeys()} 组密钥 · 头像 ${withAvatar}/${state.agents.length}${withAvatar < state.agents.length ? "（点「补头像」）" : ""}`;
 
 }
 
@@ -717,7 +752,12 @@ async function fetchHostAvatar(agentId) {
   if (hostAvatarCache.has(agentId)) return hostAvatarCache.get(agentId);
   let out = null;
   try {
-    const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/avatar`, { cache: "no-store" });
+    const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/avatar`, {
+      cache: "no-store",
+      signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout
+        ? AbortSignal.timeout(6000)
+        : undefined,
+    });
     if (res.ok) {
       const blob = await res.blob();
       if (blob && blob.size) {
@@ -745,18 +785,112 @@ async function fillHostAvatars() {
   );
 }
 
+/* ---------------- 头像导入（换机器后补图） ---------------- */
+
+// 宿主的 agents 目录在 App 的 fs 白名单外，换一台机器就必然没有图。
+// 这里让用户选一次本机的 .hanako（或 .hanako/agents）目录，
+// 把 <角色id>/avatars/agent.png 缩到 128×128 存进 App 自己的数据目录，之后就都有。
+
+const AVATAR_SIDE = 128;
+
+function fileToSquarePng(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || AVATAR_SIDE;
+        const h = img.naturalHeight || AVATAR_SIDE;
+        const side = Math.max(1, Math.min(w, h));
+        const sx = Math.max(0, Math.floor((w - side) / 2));
+        const sy = Math.max(0, Math.floor((h - side) / 2));
+        const canvas = document.createElement("canvas");
+        canvas.width = AVATAR_SIDE;
+        canvas.height = AVATAR_SIDE;
+        const g = canvas.getContext("2d");
+        g.imageSmoothingQuality = "high";
+        g.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_SIDE, AVATAR_SIDE);
+        resolve(canvas.toDataURL("image/png"));
+      } catch (err) {
+        reject(err);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("这张图读不开"));
+    };
+    img.src = url;
+  });
+}
+
+// 认得 .hanako/agents/<id>/avatars/agent.png，也认得直接选中 agents 目录的情况
+function parseAvatarPath(relPath) {
+  const rel = String(relPath || "").replace(/\\/g, "/");
+  const hit = /(?:^|\/)([^/]+)\/avatars\/([^/]+)\.(png|jpe?g|webp)$/i.exec(rel);
+  if (!hit) return null;
+  return { id: hit[1], primary: /^agent\./i.test(hit[2]) };
+}
+
+async function importAvatarsFromFiles(files) {
+  const picks = new Map();
+  for (const file of files) {
+    const hit = parseAvatarPath(file.webkitRelativePath || file.name);
+    if (!hit) continue;
+    if (!state.agents.some((a) => a.id === hit.id)) continue;
+    const prev = picks.get(hit.id);
+    if (!prev || (hit.primary && !prev.primary)) picks.set(hit.id, { file, primary: hit.primary });
+  }
+
+  if (!picks.size) {
+    toast("没在选中的目录里认出「角色id/avatars/agent.png」", "error");
+    return;
+  }
+
+  let done = 0;
+  const failed = [];
+  for (const [id, pick] of picks) {
+    try {
+      const dataUrl = await fileToSquarePng(pick.file);
+      const res = await postJson(`/avatars/${encodeURIComponent(id)}`, { dataUrl });
+      const agent = state.agents.find((a) => a.id === id);
+      if (agent && res && res.avatar) agent.avatar = res.avatar;
+      done += 1;
+    } catch (err) {
+      failed.push(`${id}: ${(err && err.message) || err}`);
+    }
+  }
+
+  renderModels();
+  if (failed.length) toast(`导入 ${done} 张，${failed.length} 张失败：${failed[0]}`, "error");
+  else toast(`已导入 ${done} 张头像，存进本机缓存`);
+}
+
 async function loadAll() {
-  const [agents, models, presets, vault] = await Promise.all([
-    api("/agents"),
-    api("/models"),
-    api("/presets"),
-    api("/vault"),
-  ]);
-  state.agents = agents.agents || [];
-  state.providers = models.providers || [];
-  state.presets = presets.presets || [];
-  state.vault = vault.providers || [];
+  const specs = [
+    ["agents", "/agents"],
+    ["models", "/models"],
+    ["presets", "/presets"],
+    ["vault", "/vault"],
+  ];
+  const settled = await Promise.allSettled(specs.map(([, path]) => api(path)));
+  const errors = [];
+  settled.forEach((outcome, i) => {
+    const key = specs[i][0];
+    if (outcome.status === "rejected") {
+      errors.push(`${key}: ${(outcome.reason && outcome.reason.message) || outcome.reason}`);
+      return;
+    }
+    const value = outcome.value || {};
+    if (key === "agents") state.agents = value.agents || [];
+    if (key === "models") state.providers = value.providers || [];
+    if (key === "presets") state.presets = value.presets || [];
+    if (key === "vault") state.vault = value.providers || [];
+  });
+  state.loadErrors = errors;
   await fillHostAvatars();
+  return errors;
 }
 
 async function ensurePreset() {
@@ -894,6 +1028,22 @@ function bind() {
       toast(String(err.message || err), "error");
     }
   });
+
+  const avatarBtn = document.getElementById("pj-avatar");
+  const avatarInput = document.getElementById("pj-avatar-input");
+  if (avatarBtn && avatarInput) {
+    avatarBtn.addEventListener("click", () => avatarInput.click());
+    avatarInput.addEventListener("change", async () => {
+      const files = Array.from(avatarInput.files || []);
+      avatarInput.value = "";
+      if (!files.length) return;
+      try {
+        await importAvatarsFromFiles(files);
+      } catch (err) {
+        toast(String((err && err.message) || err), "error");
+      }
+    });
+  }
 }
 
 /* ---------------- 入口 ---------------- */
@@ -903,8 +1053,20 @@ export async function boot() {
   bind();
   document.getElementById("pj-sub").textContent = "正在读取角色卡与供应商…";
 
-  await loadAll();
-  await ensurePreset();
+  const errors = await loadAll();
+  if (errors.length) {
+    console.error("[配装] 启动读取异常：", errors);
+    toast(errors[0], "error");
+  }
+
+  try {
+    await ensurePreset();
+  } catch (err) {
+    console.error("[配装] 建默认配装失败：", err);
+    const message = String((err && err.message) || err);
+    if (!state.loadErrors.length) state.loadErrors = [`presets: ${message}`];
+  }
+
   selectPreset(state.currentPresetId || (state.presets[0] ? state.presets[0].id : null));
   renderVault();
   renderModels();

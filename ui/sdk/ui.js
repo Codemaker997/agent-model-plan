@@ -314,7 +314,7 @@ function performHostUiAction(scope, payload, advancedAppSurface = false) {
   return { ok: false, code: "UI_ACTION_UNKNOWN_ACTION", error: `Unknown UI action: ${action || "(missing)"}.` };
 }
 
-// ../plugin-protocol/dist/index.js
+// ../../../../../packages/plugin-protocol/dist/index.js
 var PLUGIN_UI_PROTOCOL = "hana.plugin.ui";
 var PLUGIN_UI_PROTOCOL_VERSION = 1;
 var APP_SURFACE_SESSION_HEADER = "X-Hana-App-Surface-Session";
@@ -386,6 +386,9 @@ var APP_STORAGE_CAPABILITY = {
 };
 var APP_STORAGE_HOST_EVENT = {
   CHANGED: "hana.app.storage.changed"
+};
+var APP_CUSTOM_THEME_HOST_EVENT = {
+  CHANGED: "hana.app.custom-theme.changed"
 };
 var APP_CARD_CAPABILITY = { OPEN: "hana.cards.open" };
 var APP_SESSION_CAPABILITY = {
@@ -770,7 +773,8 @@ var PLUGIN_V2_MANIFEST_CONTRIBUTES_KEYS = [
   "nativeProviders",
   "previewers",
   "cliFlags",
-  "homeActions"
+  "homeActions",
+  "stylePacks"
 ];
 var PLUGIN_MANIFEST_TRUST_LEVELS = ["restricted", "full-access"];
 var PLUGIN_MANIFEST_ACTIVATION_EVENT_NAMES = [
@@ -1259,7 +1263,7 @@ function cloneJsonValue(value, context) {
         throw new AppViewStateError(code, "App view state must contain only plain arrays.");
       }
       ancestors.add(object);
-      const length = object.length;
+      const length2 = object.length;
       for (const key of Reflect.ownKeys(object)) {
         if (typeof key !== "string") {
           throw new AppViewStateError(code, "App view state must not contain symbol keys.");
@@ -1272,7 +1276,7 @@ function cloneJsonValue(value, context) {
           continue;
         }
         const index = canonicalArrayIndex(key);
-        if (index === null || index >= length) {
+        if (index === null || index >= length2) {
           throw new AppViewStateError(code, "App view state arrays must not carry extra keys.");
         }
         const descriptor = Object.getOwnPropertyDescriptor(object, key);
@@ -1281,7 +1285,7 @@ function cloneJsonValue(value, context) {
         }
       }
       const array = [];
-      for (let index = 0; index < length; index++) {
+      for (let index = 0; index < length2; index++) {
         const descriptor = Object.getOwnPropertyDescriptor(object, String(index));
         if (!descriptor) {
           throw new AppViewStateError(code, "App view state must not contain sparse arrays.");
@@ -2043,6 +2047,190 @@ function createInputPanelBridge(post) {
   return { api, handleMessage, clear };
 }
 
+// src/app-custom-themes.ts
+var CUSTOM_THEME_FORMAT_VERSION = 1;
+var CUSTOM_THEME_ID_PREFIX = "custom:";
+var CUSTOM_THEME_RADIUS_MIN = 0;
+var CUSTOM_THEME_RADIUS_MAX = 32;
+var CUSTOM_THEME_FONT_MIN_ITEMS = 1;
+var CUSTOM_THEME_FONT_MAX_ITEMS = 8;
+var CUSTOM_THEME_FONT_ITEM_MAX_LENGTH = 80;
+function color(name, group, label, opaque = false) {
+  return { name, type: "color", group, label, required: true, ...opaque ? { opaque: true } : {} };
+}
+function length(name, group, label) {
+  return {
+    name,
+    type: "length",
+    group,
+    label,
+    required: true,
+    min: CUSTOM_THEME_RADIUS_MIN,
+    max: CUSTOM_THEME_RADIUS_MAX
+  };
+}
+function fontFamily(name, group, label) {
+  return {
+    name,
+    type: "font-family",
+    group,
+    label,
+    required: true,
+    minItems: CUSTOM_THEME_FONT_MIN_ITEMS,
+    maxItems: CUSTOM_THEME_FONT_MAX_ITEMS,
+    itemMaxLength: CUSTOM_THEME_FONT_ITEM_MAX_LENGTH
+  };
+}
+var ANSI_COLOURS = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
+var VARIABLE_SPECS = Object.freeze([
+  // Background
+  color("--bg", "background", "Background", true),
+  color("--bg-card", "background", "Card background", true),
+  color("--bg-glass", "background", "Glass background"),
+  color("--sidebar-bg", "background", "Sidebar background"),
+  // Accent / link
+  color("--accent", "accent", "Accent", true),
+  color("--accent-hover", "accent", "Accent hover"),
+  color("--accent-light", "accent", "Accent tint"),
+  color("--link", "accent", "Link", true),
+  color("--link-hover", "accent", "Link hover"),
+  // Text
+  color("--text", "text", "Text"),
+  color("--text-light", "text", "Secondary text"),
+  color("--text-muted", "text", "Muted text"),
+  color("--hana-text", "text", "Chat text"),
+  // Structural colours
+  color("--border", "structural", "Border"),
+  color("--shadow", "structural", "Shadow"),
+  color("--green", "structural", "Success", true),
+  color("--coral", "structural", "Coral", true),
+  color("--danger", "structural", "Danger", true),
+  // Note pad
+  color("--jian-note-bg", "note", "Note background"),
+  color("--jian-note-border", "note", "Note border"),
+  // Chat surfaces
+  color("--mood-bg", "chat", "Mood background"),
+  color("--mood-text", "chat", "Mood text"),
+  color("--mood-border", "chat", "Mood border"),
+  color("--tool-bg", "chat", "Tool background"),
+  color("--tool-text", "chat", "Tool text"),
+  color("--user-bg", "chat", "User bubble background"),
+  color("--drop-overlay-bg", "chat", "Drop overlay background"),
+  color("--attach-bg", "chat", "Attachment background"),
+  // Overlay / scrim scale + tab slider
+  color("--overlay-subtle", "overlay", "Overlay subtle"),
+  color("--overlay-light", "overlay", "Overlay light"),
+  color("--overlay-medium", "overlay", "Overlay medium"),
+  color("--overlay-strong", "overlay", "Overlay strong"),
+  color("--tab-slider-bg", "overlay", "Tab slider background"),
+  // Terminal base
+  color("--term-bg", "terminal", "Terminal background"),
+  color("--term-fg", "terminal", "Terminal foreground"),
+  color("--term-cursor", "terminal", "Terminal cursor"),
+  color("--term-cursor-accent", "terminal", "Terminal cursor accent"),
+  color("--term-selection-bg", "terminal", "Terminal selection"),
+  ...ANSI_COLOURS.map((c) => color(`--term-ansi-${c}`, "terminal", `Terminal ANSI ${c}`)),
+  ...ANSI_COLOURS.map((c) => color(`--term-ansi-bright-${c}`, "terminal", `Terminal ANSI bright ${c}`)),
+  // Shape
+  length("--radius-input", "shape", "Input radius"),
+  length("--radius-card", "shape", "Card radius"),
+  length("--radius-chat-card", "shape", "Chat card radius"),
+  length("--radius-chat-surface", "shape", "Chat surface radius"),
+  // Typography
+  fontFamily("--font-ui", "typography", "UI font stack"),
+  fontFamily("--font-serif", "typography", "Serif font stack"),
+  fontFamily("--font-mono", "typography", "Monospace font stack")
+]);
+var CUSTOM_THEME_VARIABLE_NAMES = Object.freeze(
+  VARIABLE_SPECS.map((spec) => spec.name)
+);
+var SPEC_BY_NAME = new Map(
+  VARIABLE_SPECS.map((spec) => [spec.name, spec])
+);
+var CUSTOM_THEME_OPAQUE_COLOR_NAMES = Object.freeze(
+  VARIABLE_SPECS.filter((spec) => spec.type === "color" && spec.opaque).map((spec) => spec.name)
+);
+var CUSTOM_THEME_RGB_SOURCE_NAMES = Object.freeze([
+  "--accent",
+  "--link",
+  "--green",
+  "--coral",
+  "--danger"
+]);
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isCustomThemeId(value) {
+  if (typeof value !== "string" || !value.startsWith(CUSTOM_THEME_ID_PREFIX)) return false;
+  return UUID.test(value.slice(CUSTOM_THEME_ID_PREFIX.length));
+}
+var CUSTOM_THEME_INITIAL_DEFINITION = Object.freeze({
+  formatVersion: CUSTOM_THEME_FORMAT_VERSION,
+  name: "My theme",
+  appearance: "light",
+  variables: Object.freeze({
+    "--bg": "#F6F6F4",
+    "--bg-card": "#FCFCFB",
+    "--bg-glass": "#F6F6F4F0",
+    "--sidebar-bg": "#EFEFED",
+    "--accent": "#5B6B8C",
+    "--accent-hover": "#4A5877",
+    "--accent-light": "#5B6B8C14",
+    "--link": "#4A5877",
+    "--link-hover": "#3E4A66",
+    "--text": "#33363B",
+    "--text-light": "#5F646C",
+    "--text-muted": "#83888F",
+    "--hana-text": "#2E3A4A",
+    "--border": "#C9CCD1",
+    "--shadow": "#33363B17",
+    "--green": "#4F8A6A",
+    "--coral": "#E0857F",
+    "--danger": "#9B4A44",
+    "--jian-note-bg": "#FAF7EF",
+    "--jian-note-border": "#C9C2B4",
+    "--mood-bg": "#6B4A6B12",
+    "--mood-text": "#6B4A6B",
+    "--mood-border": "#6B4A6B2E",
+    "--tool-bg": "#00000008",
+    "--tool-text": "#5F646C",
+    "--user-bg": "#5B6B8C14",
+    "--drop-overlay-bg": "#F6F6F4D9",
+    "--attach-bg": "#0000000A",
+    "--overlay-subtle": "#00000008",
+    "--overlay-light": "#0000000D",
+    "--overlay-medium": "#00000014",
+    "--overlay-strong": "#00000026",
+    "--tab-slider-bg": "#00000026",
+    "--term-bg": "#4A5877",
+    "--term-fg": "#FCFCFB",
+    "--term-cursor": "#FCFCFB",
+    "--term-cursor-accent": "#4A5877",
+    "--term-selection-bg": "#FFFFFF40",
+    "--term-ansi-black": "#2B3340",
+    "--term-ansi-red": "#C07A75",
+    "--term-ansi-green": "#7BAE7F",
+    "--term-ansi-yellow": "#C6A15B",
+    "--term-ansi-blue": "#7A9CC6",
+    "--term-ansi-magenta": "#A98BC0",
+    "--term-ansi-cyan": "#79B4BC",
+    "--term-ansi-white": "#E6E8EA",
+    "--term-ansi-bright-black": "#6F757D",
+    "--term-ansi-bright-red": "#D99A95",
+    "--term-ansi-bright-green": "#9CC9A0",
+    "--term-ansi-bright-yellow": "#DCC088",
+    "--term-ansi-bright-blue": "#9DB8D9",
+    "--term-ansi-bright-magenta": "#C4ACD6",
+    "--term-ansi-bright-cyan": "#9CCCD2",
+    "--term-ansi-bright-white": "#FFFFFF",
+    "--radius-input": 6,
+    "--radius-card": 8,
+    "--radius-chat-card": 8,
+    "--radius-chat-surface": 16,
+    "--font-ui": Object.freeze(["-apple-system", "Segoe UI", "sans-serif"]),
+    "--font-serif": Object.freeze(["Georgia", "Times New Roman", "serif"]),
+    "--font-mono": Object.freeze(["JetBrains Mono", "monospace"])
+  })
+});
+
 // src/index.ts
 var HanaPluginError = class extends Error {
   name = "HanaPluginError";
@@ -2407,6 +2595,35 @@ function pluginApiFetch(targetWindow, input, init, documentBindingId) {
     headers
   });
 }
+function customThemeIdError() {
+  return new HanaPluginError({ code: "CUSTOM_THEME_INVALID_ID", message: "A user theme id must be custom:<uuid>." });
+}
+async function customThemesCall(targetWindow, path, init) {
+  const appId = readAppIdFromIframeRoute(targetWindow);
+  const surfaceSession = readSurfaceSession(targetWindow);
+  if (!surfaceSession) {
+    throw new Error("hana.themes.custom requires appSurfaceSession in the iframe URL.");
+  }
+  const fetchImpl = targetWindow.fetch?.bind(targetWindow) ?? globalThis.fetch?.bind(globalThis);
+  if (!fetchImpl) throw new Error("hana.themes.custom requires window.fetch.");
+  const headers = new Headers(init?.headers);
+  headers.set(APP_SURFACE_SESSION_HEADER, surfaceSession);
+  if (init?.body !== void 0 && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await fetchImpl(
+    `${targetWindow.location.origin}/api/apps/${encodeURIComponent(appId)}/custom-themes${path}`,
+    { ...init, headers }
+  );
+  if (response.status === 204) return void 0;
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const record2 = typeof body === "object" && body !== null ? body : {};
+    throw new HanaPluginError({
+      code: typeof record2.code === "string" ? record2.code : "HOST_ERROR",
+      message: typeof record2.error === "string" ? record2.error : `User theme request failed (${response.status}).`
+    });
+  }
+  return body;
+}
 function readUserGesture(targetWindow) {
   try {
     const nav = targetWindow.navigator;
@@ -2461,6 +2678,7 @@ function createHanaPluginSdk(options = {}) {
   const lifecycleSubscribers = /* @__PURE__ */ new Set();
   const surfaceContextSubscribers = /* @__PURE__ */ new Set();
   const storageChangedSubscribers = /* @__PURE__ */ new Set();
+  const customThemeChangedSubscribers = /* @__PURE__ */ new Set();
   const appStorageChangedSubscribers = /* @__PURE__ */ new Set();
   const panelEventSubscribers = /* @__PURE__ */ new Set();
   const panelRefreshSubscribers = /* @__PURE__ */ new Set();
@@ -2883,6 +3101,18 @@ function createHanaPluginSdk(options = {}) {
       }
       return;
     }
+    if (message.type === APP_CUSTOM_THEME_HOST_EVENT.CHANGED) {
+      if (typeof message.payload !== "object" || message.payload === null) return;
+      const payload = message.payload;
+      if (typeof payload.kind !== "string") return;
+      const change = {
+        kind: payload.kind,
+        ...typeof payload.id === "string" ? { id: payload.id } : {},
+        ...typeof payload.revision === "number" ? { revision: payload.revision } : {}
+      };
+      for (const callback of customThemeChangedSubscribers) callback(change);
+      return;
+    }
     if (message.type === PLUGIN_UI_HOST_EVENT.PANEL_EVENT) {
       if (typeof message.payload !== "object" || message.payload === null) return;
       const payload = message.payload;
@@ -3036,6 +3266,53 @@ function createHanaPluginSdk(options = {}) {
         return () => {
           themeSubscribers.delete(callback);
         };
+      }
+    },
+    themes: {
+      custom: {
+        list: () => customThemesCall(targetWindow, "").then((body) => body.themes),
+        get: (id) => {
+          if (!isCustomThemeId(id)) return Promise.reject(customThemeIdError());
+          return customThemesCall(targetWindow, `/${encodeURIComponent(id)}`);
+        },
+        getSchema: () => customThemesCall(targetWindow, "/schema"),
+        create: (definition) => customThemesCall(targetWindow, "", {
+          method: "POST",
+          body: JSON.stringify(definition)
+        }),
+        update: (id, input) => {
+          if (!isCustomThemeId(id)) return Promise.reject(customThemeIdError());
+          return customThemesCall(targetWindow, `/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            body: JSON.stringify(input)
+          });
+        },
+        remove: (id, options2) => {
+          if (!isCustomThemeId(id)) return Promise.reject(customThemeIdError());
+          return customThemesCall(targetWindow, `/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            body: JSON.stringify(options2)
+          });
+        },
+        apply: (id) => {
+          if (!isCustomThemeId(id)) return Promise.reject(customThemeIdError());
+          return customThemesCall(targetWindow, `/${encodeURIComponent(id)}/apply`, { method: "POST" });
+        },
+        preview: (input) => customThemesCall(targetWindow, "/preview", {
+          method: "POST",
+          body: JSON.stringify(input)
+        }),
+        endPreview: (previewId) => customThemesCall(
+          targetWindow,
+          `/preview/${encodeURIComponent(previewId)}`,
+          { method: "DELETE" }
+        ),
+        subscribe(callback) {
+          customThemeChangedSubscribers.add(callback);
+          return () => {
+            customThemeChangedSubscribers.delete(callback);
+          };
+        }
       }
     },
     envelope: {
@@ -3357,6 +3634,20 @@ var hana = {
     },
     subscribe(callback) {
       return getSingleton().theme.subscribe(callback);
+    }
+  },
+  themes: {
+    custom: {
+      list: () => getSingleton().themes.custom.list(),
+      get: (id) => getSingleton().themes.custom.get(id),
+      getSchema: () => getSingleton().themes.custom.getSchema(),
+      create: (definition) => getSingleton().themes.custom.create(definition),
+      update: (id, input) => getSingleton().themes.custom.update(id, input),
+      remove: (id, options) => getSingleton().themes.custom.remove(id, options),
+      apply: (id) => getSingleton().themes.custom.apply(id),
+      preview: (input) => getSingleton().themes.custom.preview(input),
+      endPreview: (previewId) => getSingleton().themes.custom.endPreview(previewId),
+      subscribe: (callback) => getSingleton().themes.custom.subscribe(callback)
     }
   },
   envelope: {
@@ -3732,6 +4023,20 @@ function appUiSdk(getSdk, getWindow = browserWindow, options = {}) {
       },
       subscribe(callback) {
         return getSdk().theme.subscribe(callback);
+      }
+    },
+    themes: {
+      custom: {
+        list: () => getSdk().themes.custom.list(),
+        get: (id) => getSdk().themes.custom.get(id),
+        getSchema: () => getSdk().themes.custom.getSchema(),
+        create: (definition) => getSdk().themes.custom.create(definition),
+        update: (id, input) => getSdk().themes.custom.update(id, input),
+        remove: (id, options2) => getSdk().themes.custom.remove(id, options2),
+        apply: (id) => getSdk().themes.custom.apply(id),
+        preview: (input) => getSdk().themes.custom.preview(input),
+        endPreview: (previewId) => getSdk().themes.custom.endPreview(previewId),
+        subscribe: (callback) => getSdk().themes.custom.subscribe(callback)
       }
     },
     envelope: {

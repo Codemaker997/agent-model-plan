@@ -32,6 +32,18 @@ Hana **v2 App**。两件事：
 
 缺哪项，对应动作会在界面上直接说缺哪项。
 
+## 头像从哪来
+
+角色头像是这个 App 唯一读不到宿主的东西。`HANA_HOME/agents/<id>/avatars/` 在 App 的 `--allow-fs-read` 白名单外，`ctx.resources.read({ kind: "agent" })` 只放 `identity.md` / `AGENTS.md` / `AGENTS.public.md` 三个文档，`/api/agents/:id/avatar` 在页面里请求会吃 403（缺本地凭证）。三条路都是设计上关着的。
+
+所以头像按三级取：
+
+1. **本机缓存**：`{HANA_HOME}/app-data/agent-model-plan/avatars/<agentId>.png`，由「补头像」按钮导入。点一次，选 `{HANA_HOME}/agents` 目录，它按 `<角色id>/avatars/agent.png` 认人，缩到 128×128 存进来，之后每次都能读到。
+2. **随包单个**：`avatars/<agentId>.png`，随安装一起复制进 installDir。包里没这个 id 就用不了。
+3. **随包按 yuan 兜底**：`avatars-yuan/<yuan>.png`（hanako / butter / ming / kong 四张），新角色没有自己的图时按它的人格底座给一张。
+
+三级都没有就回落到首字母加主题色，不会开天窗。副标题里的「头像 n/m」是三个来源合起来的统计，缺得多的时候会提示去点「补头像」。
+
 ## 密钥怎么存
 
 - 落盘位置：`{HANA_HOME}/app-data/agent-model-plan/vault.json`
@@ -71,6 +83,8 @@ agent-model-plan/
 ├── manifest.json
 ├── index.js                    # apply(ctx)：ctx.routes.register 挂后端
 ├── assets/icon.svg             # 身份图标（包根）
+├── avatars/<agentId>.png       # 随包的角色头像（128×128）
+├── avatars-yuan/<yuan>.png     # 四神兽兜底头像
 ├── design/mockup.html          # 静态设计稿
 └── ui/
     ├── index.html              # 整页卡

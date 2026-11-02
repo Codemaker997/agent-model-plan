@@ -34,6 +34,7 @@
         <button type="button" class="pj-btn ghost" id="pj-dup">复制</button>
         <button type="button" class="pj-btn ghost danger" id="pj-del">删除</button>
         <button type="button" class="pj-btn" id="pj-import">从实况导入</button>
+        <button type="button" class="pj-btn ghost" id="pj-avatar" title="选 HANA_HOME 下的 agents 目录，把各角色目录里的 avatars/agent.png 收进来并存在本机">补头像</button>
         <button type="button" class="pj-btn" id="pj-reload">刷新</button>
       </div>
 
@@ -43,6 +44,7 @@
       </div>
 
       <div class="pj-sheet">
+        <input type="file" id="pj-avatar-input" accept="image/*" webkitdirectory directory multiple hidden>
         <table class="pj-table">
           <thead>
             <tr>
@@ -88,8 +90,16 @@
 <script type="module">
   import { boot } from "./app.mjs";
   boot().catch((err) => {
+    console.error("[配装] 启动失败：", err);
     const sub = document.getElementById("pj-sub");
-    if (sub) sub.textContent = "启动失败：" + String(err && err.message || err);
+    const message = String((err && err.message) || err);
+    if (sub) sub.textContent = "启动失败：" + message;
+    const toast = document.getElementById("pj-toast");
+    if (toast) {
+      toast.textContent = "启动失败：" + message;
+      toast.dataset.tone = "error";
+      toast.hidden = false;
+    }
   });
 </script>
 </body>
